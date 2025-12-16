@@ -4,7 +4,7 @@ modules:
   # ----------------------------------------
   rovo:agent:
     - key: software-bug-triage-agent-sobta
-      name: Software Bug Triage Agent (SOBTA)
+      name: SOBTA Bug Triage Agent
       description: An expert agent that analyzes new bug reports, prioritizes them, and assigns them to the correct engineering team, utilizing external context tools.
       prompt: >
         You are the 'AI Pit Crew Chief' for software bug triage. Your job is to accelerate the software team's workflow.
@@ -38,6 +38,7 @@ modules:
         Retrieves critical information about the user reporting the bug,
         such as their subscription tier (Standard, Enterprise) and support history,
         to determine the business impact and influence priority.
+      actionVerb: GET 
       inputs:
         user_id:
           title: Reporter's Jira User ID
@@ -53,6 +54,7 @@ modules:
         Searches Bitbucket or a configured source code repository for file paths 
         or components related to the bug description. This helps determine the
         correct engineering team/component for assignment.
+      actionVerb: GET
       inputs:
         keywords:
           title: Code Search Keywords
@@ -67,27 +69,33 @@ modules:
       description: >
         Creates a final, fully triaged Jira issue with the calculated priority, 
         component, and assignee determined by the agent's full analysis.
+      actionVerb: CREATE
       inputs:
         summary:
           title: Issue Summary
           type: string
           required: true
+          description: "A concise title for the new bug ticket."
         description:
           title: Full Issue Description
           type: string
           required: true
+          description: "The full details of the bug report."
         priority:
           title: Calculated Priority
           type: string
           required: true
+          description: "The final priority level determined by the agent (e.g., Highest, High)."
         component:
           title: Assigned Component
           type: string
           required: true
+          description: "The software component associated with the bug (e.g., 'Billing', 'Auth')."
         assignee_id:
           title: Target Assignee/Team Lead ID
           type: string
-          required: false # Can be left blank for team assignment
+          required: false
+          description: "The Atlassian Account ID of the user to assign the ticket to."
           
   # ----------------------------------------
   # 3. Function Handlers
@@ -112,14 +120,14 @@ app:
   
 permissions:
   scopes:
-    - read:jira-work # For initial issue context and user lookup
-    - write:jira-work # CRITICAL for creating the final triaged ticket
-    - read:me # To identify the user interacting with the agent
-    - read:rovo-agent # Required for Rovo Agent functionality
-    - manage:jira-configuration # Optional, for setting up Issue Event triggers
+    - read:jira-work
+    - write:jira-work
+    - read:me
+    - manage:jira-configuration
+    - storage:app
   external:
     fetch:
-      # CRITICAL: Allow SOBTA to fetch user/CRM data and code search results
+      # Final attempt at the correct structure for external fetch
       backend:
         - 'https://api.your-crm.com' 
         - 'https://api.bitbucket.org'
