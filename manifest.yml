@@ -1,41 +1,125 @@
 modules:
+  # ----------------------------------------
+  # 1. Rovo Agent Definition (The Brain)
+  # ----------------------------------------
   rovo:agent:
-    - key: software-bug-triage-agent-hello-world-agent
-      name: software_bug_triage_agent
-      description: An agent for testing Forge agent functionality
+    - key: software-bug-triage-agent-sobta
+      name: Software Bug Triage Agent (SOBTA)
+      description: An expert agent that analyzes new bug reports, prioritizes them, and assigns them to the correct engineering team, utilizing external context tools.
       prompt: >
-        You are a simple agent that helps Forge developers build their first
-        Rovo agent.
+        You are the 'AI Pit Crew Chief' for software bug triage. Your job is to accelerate the software team's workflow.
+        
+        Follow this strict, non-deterministic path:
+        1. Extract the reporter's Jira User ID from the new bug report context.
+        2. Call the 'get-user-details-action' with the User ID to retrieve the user's priority tier (e.g., 'Standard', 'Enterprise').
+        3. Call the 'search-codebase-action' with keywords from the bug description to find the relevant Component and Team (e.g., 'Auth-Service').
+        4. Based on the bug severity, the user tier, and the team component found, synthesize the final Jira Priority (e.g., P1 - Highest).
+        5. Call the 'create-jira-ticket-action' with the full, synthesized data (Priority, Component, Team, Description) to create a fully-triaged, actionable Jira ticket.
+        
+        Only use the functions provided. Do not invent priority or assignment without calling the tools first.
 
-        You can create Forge logs by using the hello-world-logger action.
-
-        If the user hasn't provided a message when they ask you to create a log
-        ask them to provide one.
       conversationStarters:
-        - Log a message to Forge logs
+        - Triage new bug report BUG-123
+        - Assign priority for support ticket TICKET-456
       actions:
-        - hello-world-logger
+        - get-user-details-action
+        - search-codebase-action
+        - create-jira-ticket-action
+
+  # ----------------------------------------
+  # 2. Action Definitions (The Tools)
+  # ----------------------------------------
   action:
-    - key: hello-world-logger
-      name: Log a message
-      function: messageLogger
-      actionVerb: GET
+    # Tool 1: Get Reporter's Context
+    - key: get-user-details-action
+      name: Get User Details
+      function: getUserDetails
       description: >
-        When a user asks to log a message, this action logs the message to the
-        Forge logs.
+        Retrieves critical information about the user reporting the bug,
+        such as their subscription tier (Standard, Enterprise) and support history,
+        to determine the business impact and influence priority.
       inputs:
-        message:
-          title: Message
+        user_id:
+          title: Reporter's Jira User ID
           type: string
           required: true
-          description: |
-            "The message that the user has requested be logged to Forge logs"
+          description: "The unique ID of the user who created the bug report."
+
+    # Tool 2: Search Codebase for Assignment
+    - key: search-codebase-action
+      name: Search Codebase for Relevant Files
+      function: searchCodebase
+      description: >
+        Searches Bitbucket or a configured source code repository for file paths 
+        or components related to the bug description. This helps determine the
+        correct engineering team/component for assignment.
+      inputs:
+        keywords:
+          title: Code Search Keywords
+          type: string
+          required: true
+          description: "Key technical terms or file names extracted from the bug report summary."
+
+    # Tool 3: Create Final Jira Ticket
+    - key: create-jira-ticket-action
+      name: Create Triaged Jira Ticket
+      function: createJiraTicket
+      description: >
+        Creates a final, fully triaged Jira issue with the calculated priority, 
+        component, and assignee determined by the agent's full analysis.
+      inputs:
+        summary:
+          title: Issue Summary
+          type: string
+          required: true
+        description:
+          title: Full Issue Description
+          type: string
+          required: true
+        priority:
+          title: Calculated Priority
+          type: string
+          required: true
+        component:
+          title: Assigned Component
+          type: string
+          required: true
+        assignee_id:
+          title: Target Assignee/Team Lead ID
+          type: string
+          required: false # Can be left blank for team assignment
+          
+  # ----------------------------------------
+  # 3. Function Handlers
+  # ----------------------------------------
   function:
-    - key: messageLogger
-      handler: index.messageLogger
+    - key: getUserDetails
+      handler: index.getUserDetails
+    - key: searchCodebase
+      handler: index.searchCodebase
+    - key: createJiraTicket
+      handler: index.createJiraTicket
+
+# ----------------------------------------
+# 4. App and Permissions
+# ----------------------------------------
 app:
   runtime:
     name: nodejs24.x
     memoryMB: 256
     architecture: arm64
   id: ari:cloud:ecosystem::app/b1cfa823-8bcd-47bd-a952-12dcfe4e9c92
+  
+permissions:
+  scopes:
+    - read:jira-work # For initial issue context and user lookup
+    - write:jira-work # CRITICAL for creating the final triaged ticket
+    - read:me # To identify the user interacting with the agent
+    - read:rovo-agent # Required for Rovo Agent functionality
+    - manage:jira-configuration # Optional, for setting up Issue Event triggers
+  external:
+    fetch:
+      # CRITICAL: Allow SOBTA to fetch user/CRM data and code search results
+      backend:
+        - 'https://api.your-crm.com' 
+        - 'https://api.bitbucket.org'
